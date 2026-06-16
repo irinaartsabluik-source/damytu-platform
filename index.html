@@ -1506,10 +1506,14 @@ rReviews();loadLandReviews();notify('Отзыв удалён');
 // ══ POST COURSE ADMIN ═════════════════════════
 async function rPostCourseAdmin(){
 const el=document.getElementById('post-course-admin-list');if(!el)return;
+el.innerHTML='<div class="loader">Загрузка...</div>';
 try{
-const rows=await dbGet('post_course','?order=created_at.desc');
+// Сначала загружаем курсы и участников если их нет
 if(!courses.length)courses=await dbGet('courses','?order=id.asc');
-if(!rows||!rows.length){el.innerHTML='<p style="font-size:13px;color:var(--txm)">Записей пока нет.</p>';return;}
+if(!parts.length)parts=await dbGet('participants','?order=created_at.desc');
+// Теперь загружаем посткурсовые записи
+const rows=await dbGet('post_course','?order=created_at.desc');
+if(!rows||!rows.length){el.innerHTML='<p style="font-size:13px;color:var(--txm);padding:2rem;text-align:center">Записей пока нет.</p>';return;}
 el.innerHTML=rows.map(pc=>{
 const c=courses.find(x=>String(x.id)===String(pc.course_id));
 const p=parts.find(u=>u.id===pc.participant_id);
@@ -1519,11 +1523,11 @@ return `<div style="background:var(--bg);border-radius:8px;padding:.7rem;margin-
 <button class="btn bp bsm" onclick="saveLibraryLinkAdmin(${pc.id})">💾</button>
 </div>`;
 }).join('');
-}catch(e){console.error(e);}
+}catch(e){console.error('PostCourse error:',e);el.innerHTML='<p style="color:#e74c3c;padding:2rem;text-align:center">Ошибка: '+e.message+'</p>';}
 }
 async function saveLibraryLinkAdmin(pcId){
 const val=document.getElementById('lib-url-'+pcId).value.trim();
-await dbPatch('post_course',{library_url:val},`?id=eq.${pcId}`);
+await dbPatch('post_course',{library_url:val},`?id=eq.${pc.id}`);
 notify('✅ Ссылка сохранена');
 }
 // ══ PAYMENT & SETTINGS ════════════════════════
