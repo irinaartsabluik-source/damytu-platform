@@ -386,11 +386,10 @@ nav{padding:0 .8rem;height:56px}.nright .lbtn{display:none}
 </div>
 <div id="at-reviews" class="hidden">
 <div class="ph"><h1>💬 Отзывы участников</h1></div>
-<div style="margin-bottom:1rem"><button class="btn bp bsm" onclick="showM('m-add-review')">+ Добавить отзыв</button></div>
-<table class="tbl"><thead><tr><th>Автор</th><th>Отзыв</th><th>Дата</th><th>На главной</th><th>Действия</th></tr></thead><tbody id="reviews-body"></tbody></table>
+<table class="tbl"><thead><tr><th>Автор</th><th>Курс</th><th>Оценка</th><th>Отзыв</th><th>Дата</th><th>На главной</th></tr></thead><tbody id="reviews-body"></tbody></table>
 </div>
 <div id="at-post" class="hidden">
-<div class="ph"><h1>📚 Посткурсовое сопровождение</h1></div>
+<div class="ph"><h1> Посткурсовое сопровождение</h1></div>
 <div id="post-course-admin-list"><div class="loader">Загрузка</div></div>
 </div>
 <div id="at-pay" class="hidden">
@@ -1100,8 +1099,21 @@ const comment=document.getElementById('fb-comment').value.trim();
 if(!cid){notify('Выберите курс','e');return;}
 if(!rating){notify('Поставьте оценку','e');return;}
 try{
-await dbPost('feedback',{participant_id:cu.id,course_id:parseInt(cid),rating,liked,improve,comment});
+// Сохраняем в таблицу reviews
+await dbPost('reviews',{
+participant_id:cu.id,
+course_id:parseInt(cid),
+author:cu.fio||cu.em||'Аноним',
+text:comment||liked||'Без текста',
+rating:rating,
+liked:liked,
+improve:improve,
+comment:comment,
+date:new Date().toLocaleDateString('ru-RU'),
+show_on_main:false
+});
 notify('✅ Отзыв отправлен!');
+// Очищаем форму
 document.getElementById('fb-course').value='';
 document.getElementById('fb-rating-value').value='0';
 document.getElementById('fb-liked').value='';
@@ -1463,19 +1475,24 @@ closeM('m-cert-up');await rAdmCerts();notify('✅ Сохранено!');
 // ══ REVIEWS ADMIN ════════════════════════════
 async function rReviews(){
 const tb=document.getElementById('reviews-body');if(!tb)return;
-tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:1rem">Загрузка...</td></tr>';
+tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:1rem">Загрузка...</td></tr>';
 try{
 const rows=await dbGet('reviews','?order=created_at.desc');
-reviews=rows||[];
-if(!rows||!rows.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--txm);padding:1.5rem">Нет отзывов</td></tr>';return;}
-tb.innerHTML=rows.map(r=>`<tr>
-<td>${escapeHtml(r.author||'Аноним')}</td>
-<td style="font-size:12px;max-width:300px">${escapeHtml(r.text||'')}</td>
+if(!rows||!rows.length){tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--txm);padding:1.5rem">Нет отзывов</td></tr>';return;}
+if(!courses.length)courses=await dbGet('courses','?order=id.asc');
+tb.innerHTML=rows.map(r=>{
+const c=courses.find(x=>String(x.id)===String(r.course_id));
+const stars=r.rating?'⭐'.repeat(r.rating):'—';
+return `<tr>
+<td style="font-size:12px">${escapeHtml(r.author||'Аноним')}</td>
+<td style="font-size:12px">${c?escapeHtml(c.ru.substring(0,30)):'—'}</td>
+<td style="font-size:12px">${stars}</td>
+<td style="font-size:12px;max-width:250px">${escapeHtml(r.text||r.comment||'')}</td>
 <td style="font-size:11px">${escapeHtml(r.date||'')}</td>
 <td><input type="checkbox" ${r.show_on_main?'checked':''} onchange="toggleReview(${r.id},this.checked)"></td>
-<td><button class="btn bd bsm" onclick="delReview(${r.id})">🗑</button></td>
-</tr>`).join('');
-}catch(e){console.error(e);tb.innerHTML='<tr><td colspan="5" style="text-align:center;color:#e74c3c">Ошибка загрузки</td></tr>';}
+</tr>`;
+}).join('');
+}catch(e){console.error(e);tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:#e74c3c">Ошибка загрузки</td></tr>';}
 }
 async function addReview(){
 const author=document.getElementById('rv-author').value.trim();
@@ -1508,22 +1525,20 @@ async function rPostCourseAdmin(){
 const el=document.getElementById('post-course-admin-list');if(!el)return;
 el.innerHTML='<div class="loader">Загрузка...</div>';
 try{
-// Сначала загружаем курсы и участников если их нет
 if(!courses.length)courses=await dbGet('courses','?order=id.asc');
-if(!parts.length)parts=await dbGet('participants','?order=created_at.desc');
-// Теперь загружаем посткурсовые записи
-const rows=await dbGet('post_course','?order=created_at.desc');
-if(!rows||!rows.length){el.innerHTML='<p style="font-size:13px;color:var(--txm);padding:2rem;text-align:center">Записей пока нет.</p>';return;}
-el.innerHTML=rows.map(pc=>{
-const c=courses.find(x=>String(x.id)===String(pc.course_id));
-const p=parts.find(u=>u.id===pc.participant_id);
-return `<div style="background:var(--bg);border-radius:8px;padding:.7rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
-<div style="font-size:12px;font-weight:600;flex:1;min-width:150px">${p?escapeHtml(p.fio||p.em):'—'} — ${c?escapeHtml(c.ru.substring(0,30)):'—'}</div>
-<input type="url" id="lib-url-${pc.id}" value="${escapeHtml(pc.library_url||'')}" placeholder="URL библиотеки" style="flex:2;min-width:200px;padding:5px 8px;border:1.5px solid var(--br);border-radius:6px;font-size:12px">
-<button class="btn bp bsm" onclick="saveLibraryLinkAdmin(${pc.id})">💾</button>
-</div>`;
-}).join('');
-}catch(e){console.error('PostCourse error:',e);el.innerHTML='<p style="color:#e74c3c;padding:2rem;text-align:center">Ошибка: '+e.message+'</p>';}
+if(!courses.length){el.innerHTML='<p style="font-size:13px;color:var(--txm);padding:2rem;text-align:center">Курсов пока нет.</p>';return;}
+el.innerHTML=courses.map(c=>`
+<div style="background:var(--bg);border-radius:8px;padding:.7rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+<div style="font-size:12px;font-weight:600;flex:1;min-width:200px">${escapeHtml(c.ru.substring(0,50))}</div>
+<input type="url" id="course-lib-${c.id}" value="${escapeHtml(c.library_url||'')}" placeholder="URL библиотеки курса" style="flex:2;min-width:250px;padding:5px 8px;border:1.5px solid var(--br);border-radius:6px;font-size:12px">
+<button class="btn bp bsm" onclick="saveCourseLibrary(${c.id})">💾</button>
+</div>`).join('');
+}catch(e){console.error('Course library error:',e);el.innerHTML='<p style="color:#e74c3c;padding:2rem;text-align:center">Ошибка: '+e.message+'</p>';}
+}
+async function saveCourseLibrary(courseId){
+const val=document.getElementById('course-lib-'+courseId).value.trim();
+await dbPatch('courses',{library_url:val},`?id=eq.${courseId}`);
+notify('✅ Ссылка на библиотеку сохранена для курса');
 }
 async function saveLibraryLinkAdmin(pcId){
 const val=document.getElementById('lib-url-'+pcId).value.trim();
